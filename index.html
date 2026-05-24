@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Aegis MR Canvas & Mic Test</title>
+    <title>Aegis MR Canvas & Voice Stream</title>
     <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
   </head>
   <body>
@@ -22,19 +22,54 @@
     </a-scene>
 
     <script>
-      // Automatically request microphone permissions when the canvas loads
+      let socket;
+
+      // This sets up the live phone line to your AI backend
+      function connectBackend() {
+        // We will replace this placeholder URL with your real server link later!
+        socket = new WebSocket('wss://your-aegis-backend-server.com/stream');
+
+        socket.onopen = () => {
+          console.log("Connected to AEGIS voice pipeline!");
+          initAudio();
+        };
+      }
+
+      // Your existing working mic code
       async function initAudio() {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           console.log("Microphone access granted successfully!");
-          // Your microphone stream is now open and ready for AEGIS audio pipeline
+          
+          // Audio processing setup
+          const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+          const mediaStreamSource = audioContext.createMediaStreamSource(stream);
+          const processor = audioContext.createScriptProcessor(4096, 1, 1);
+          
+          mediaStreamSource.connect(processor);
+          processor.connect(audioContext.destination);
+
+          // This takes your voice chunks and streams them down the live pipe
+          processor.onaudioprocess = (e) => {
+            const inputData = e.inputBuffer.getChannelData(0);
+            const outputData = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+              outputData[i] = Math.min(1, Math.max(-1, inputData[i])) * 0x7FFF;
+            }
+            
+            if (socket && socket.readyState === WebSocket.OPEN) {
+              socket.send(outputData.buffer);
+            }
+          };
+
         } catch (err) {
           console.error("Microphone access denied or error occurred:", err);
         }
       }
 
-      // Initialize mic request on page load
-      window.addEventListener('load', initAudio);
+      // Start by connecting to the backend when the page loads
+      window.addEventListener('load', connectBackend);
     </script>
   </body>
 </html>
+
