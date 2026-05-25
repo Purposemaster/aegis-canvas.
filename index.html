@@ -1,100 +1,119 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <meta charset="utf-8">
-  <title>Aegis Canvas</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-</head>
-<body style="margin:0;">
+  <head>
+    <meta charset="utf-8">
+    <title>Aegis Canvas</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  </head>
+  <body style="margin:0;">
 
-  <a-scene 
-    webxr="optionalFeatures: hit-test, local-floor, bounded-floor, hand-tracking"
-    background="color: #050814"
-    renderer="antialias: true; alpha: true">
-    
-    <!-- Your turquoise sphere -->
-    <a-sphere 
-      id="aegis-sphere"
-      position="0 1.6 -2" 
-      radius="0.3" 
-      color="#22D3EE"
-      animation="property: rotation; to: 0 360 0; loop: true; dur: 8000">
-    </a-sphere>
+    <a-scene
+      webxr="optionalFeatures: hit-test, local-floor, bounded-floor, hand-tracking"
+      background="color: #050814"
+      renderer="antialias: true; alpha: true">
+      
+      <a-sphere
+        id="aegis-sphere"
+        position="0 1.6 -2"
+        radius="0.3"
+        color="#22D3EE"
+        animation="property: rotation; to: 0 360 0; loop: true; dur: 8000">
+      </a-sphere>
 
-    <a-light type="ambient" color="#888"></a-light>
-    <a-light type="directional" position="2 4 3" intensity="0.8"></a-light>
+      <a-light type="ambient" color="#888"></a-light>
+      <a-light type="directional" position="2 4 3" intensity="0.8"></a-light>
+      <a-camera position="0 1.6 0"></a-camera>
+    </a-scene>
 
-    <a-camera position="0 1.6 0"></a-camera>
-  </a-scene>
-
-  <script>
-  // === YOUR AEGIS STATE-PRESERVATION LAYER (unchanged) ===
-  let socket;
-  const AegisState = {
-    cacheKey: 'aegis_stage_snapshot',
-    save: () => {
-      const sceneEl = document.querySelector('a-scene');
-      if (!sceneEl) return;
-      const primitives = sceneEl.querySelectorAll('a-sphere, a-box, a-cylinder, a-entity');
-      const snapshot = [];
-      primitives.forEach((el, index) => {
-        if (el.hasAttribute('camera')) return;
-        snapshot.push({
-          id: el.id || `primitive_${index}`,
-          tagName: el.tagName.toLowerCase(),
-          position: el.getAttribute('position'),
-          rotation: el.getAttribute('rotation'),
-          scale: el.getAttribute('scale'),
-          color: el.getAttribute('color')
-        });
-      });
-      localStorage.setItem(AegisState.cacheKey, JSON.stringify(snapshot));
-      console.log('🛡️ Aegis: Stage configurations cached.');
-    },
-    restore: () => {
-      const savedData = localStorage.getItem(AegisState.cacheKey);
-      if (!savedData) return;
-      const sceneEl = document.querySelector('a-scene');
-      if (!sceneEl) return;
-      const objects = JSON.parse(savedData);
-      objects.forEach(obj => {
-        let el = document.getElementById(obj.id);
-        if (!el) {
-          el = document.createElement(obj.tagName);
-          el.setAttribute('id', obj.id);
-          sceneEl.appendChild(el);
+    <script>
+      // === YOUR AEGIS STATE-PRESERVATION LAYER ===
+      const AegisState = {
+        cacheKey: 'aegis_stage_snapshot',
+        save: () => {
+          const sceneEl = document.querySelector('a-scene');
+          if (!sceneEl) return;
+          const primitives = sceneEl.querySelectorAll('a-sphere, a-box, a-cylinder, a-entity');
+          const snapshot = [];
+          primitives.forEach((el, index) => {
+            if (el.hasAttribute('camera')) return;
+            snapshot.push({
+              id: el.id || `primitive_${index}`,
+              tagName: el.tagName.toLowerCase(),
+              position: el.getAttribute('position'),
+              rotation: el.getAttribute('rotation'),
+              scale: el.getAttribute('scale'),
+              color: el.getAttribute('color')
+            });
+          });
+          localStorage.setItem(AegisState.cacheKey, JSON.stringify(snapshot));
+          console.log('🛡️ Aegis: Stage configurations cached.');
+        },
+        restore: () => {
+          const savedData = localStorage.getItem(AegisState.cacheKey);
+          if (!savedData) return;
+          const sceneEl = document.querySelector('a-scene');
+          if (!sceneEl) return;
+          const objects = JSON.parse(savedData);
+          objects.forEach(obj => {
+            let el = document.getElementById(obj.id);
+            if (!el) {
+              el = document.createElement(obj.tagName);
+              el.setAttribute('id', obj.id);
+              sceneEl.appendChild(el);
+            }
+            if (obj.position) el.setAttribute('position', obj.position);
+            if (obj.rotation) el.setAttribute('rotation', obj.rotation);
+            if (obj.scale) el.setAttribute('scale', obj.scale);
+            if (obj.color) el.setAttribute('color', obj.color);
+          });
         }
-        if (obj.position) el.setAttribute('position', obj.position);
-        if (obj.rotation) el.setAttribute('rotation', obj.rotation);
-        if (obj.scale) el.setAttribute('scale', obj.scale);
-        if (obj.color) el.setAttribute('color', obj.color);
-      });
-    }
-  };
+      };
 
-  window.addEventListener('load', () => {
-    AegisState.restore();
-    const sceneEl = document.querySelector('a-scene');
-    if (sceneEl) {
-      sceneEl.addEventListener('render-target-loaded', () => {
-        const canvas = sceneEl.canvas;
-        canvas.addEventListener('webglcontextlost', (event) => {
-          event.preventDefault();
-          AegisState.save();
-        }, false);
-        canvas.addEventListener('webglcontextrestored', () => {
-          AegisState.restore();
-        }, false);
+      // === 🔊 ELEVENLABS AUDIO RECEIVER CONNECT ===
+      let audioCtx = null;
+
+      function playIncomingAudioStream(arrayBuffer) {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        audioCtx.decodeAudioData(arrayBuffer, (buffer) => {
+          const source = audioCtx.createBufferSource();
+          source.buffer = buffer;
+          source.connect(audioCtx.destination);
+          source.start(0);
+          
+          // Visual feedback: Pulse the ball when speaking
+          const ball = document.getElementById('aegis-sphere');
+          if (ball) {
+            ball.setAttribute('animation__pulse', 'property: scale; to: 1.2 1.2 1.2; dur: 150; dir: alternate; loop: 2');
+          }
+        }, (err) => console.error("Error decoding ElevenLabs audio stream:", err));
+      }
+
+      // === RUNTIME CRASH PROTECTION & LIFECYCLE ===
+      window.addEventListener('load', () => {
+        AegisState.restore();
+        
+        // Unlock audio context on headset interaction
+        window.addEventListener('click', () => {
+          if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }, { once: true });
+
+        const sceneEl = document.querySelector('a-scene');
+        if (sceneEl) {
+          sceneEl.addEventListener('render-target-loaded', () => {
+            const canvas = sceneEl.canvas;
+            canvas.addEventListener('webglcontextlost', (event) => {
+              event.preventDefault();
+              AegisState.save();
+            }, false);
+            canvas.addEventListener('webglcontextrestored', () => {
+              AegisState.restore();
+            }, false);
+          });
+        }
       });
-    }
-  });
-  </script>
-</body>
+    </script>
+  </body>
 </html>
-Steps:
-Go to github.com/Purposemaster/aegis-canvas
-Open index.html → click the pencil ✏️ edit button
-Delete everything and paste the code above
-Scroll down → Commit changes to main
-Wait ~1 minute → revisit https://purposemaster.github.io/aegis-canvas
